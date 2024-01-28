@@ -1,0 +1,88 @@
+bool THTGraph::add_net_path_dis3(int start, int end, int net_num, Database &db) //添加没问题就返回1，否则返回0
+{
+    Wire *wire = nullptr;
+    int fpga_num = 0;   //确认FPGA编号
+    find_wire_from_die(db,start,end,wire,fpga_num);
+    if(wire == nullptr && fpga_num == -1)
+        return 1;
+
+    if (wire->inter_fpga == 0)
+    {
+        wire->wire_num -= 1;
+        return 1;
+    }
+    else
+    {
+        wire->fpga_wire[fpga_num].net_id.push_back(net_num);    //修改对应wire的对应FPGA线路存储的net，并更新TDM值
+
+        if (wire->fpga_wire[fpga_num].net_id.size() > wire->fpga_wire[fpga_num].TDM_Ratio * 4)
+        {
+            wire->fpga_wire[fpga_num].TDM_Ratio += 1;
+        }
+
+        map<int,int> net_map;
+        for (auto netid : wire->fpga_wire[fpga_num].net_id)
+            net_map[netid] = 1;
+        
+        for (auto &net : db.net)
+        {
+            if (net_map.find(net.id) == net_map.end())
+                continue;
+
+            net.max_rw = -1;
+
+            for (auto &input_node : net.input_node)
+            {
+                input_node.rw = 0;
+                if (input_node.path.size() != 0) //虽然感觉多余了，但是删了就是会越界……
+                {
+                    for (int i = 0;i < input_node.path.size() - 1;i++)
+                    {
+                        input_node.rw += add_rw(db,input_node.path[i],input_node.path[i+1]);       
+                    }
+                }
+                
+                if (net.max_rw < input_node.rw)
+                    net.max_rw = input_node.rw;
+            }
+
+            if (net.max_rw > max_max_rw)
+            {
+                wire->fpga_wire[fpga_num].TDM_Ratio = -1;
+                return 0;
+            }
+            bool t = 0;
+            for (auto net_max : net_max_rw)
+                if (net_max->id == net.id)
+                    t == 1;
+            
+            if (net.max_rw == max_max_rw && !t)
+            {
+                wire->fpga_wire[fpga_num].TDM_Ratio = -1;
+                return 0;
+            }
+        }
+    }
+    return 1;
+}
+
+  bool add_net_path_dis3(int start, int end, int net_num, Database &db);
+
+
+  vector<pair<int, Net*>>net_rw;
+    for (auto &net :db.net)
+        net_rw.push_back(make_pair(net.max_rw, &net));
+    
+    sort(net_rw.begin(),net_rw.end(),cmp3);
+    if(net_rw[0].first > max_max_rw)
+    {
+        return 1;
+    }
+    else
+    {
+        int count = 0;
+        while (net_rw[count++].first == max_max_rw);
+        count--;
+        if(count > net_max_rw.size())
+            return 1;
+    }
